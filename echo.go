@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The Echo Gym Timer's remote is infrared. The published capture of the
@@ -112,22 +113,29 @@ var (
 // runs INTERVALS…TABATA on the live arc; the pot dead zone sits between
 // TABATA and INTERVALS.
 type Session struct {
-	Dial  int
-	Count int
-	Time  int
-	Rest  int
-	Slot  int
-	Note  string
+	Dial    int
+	Count   int
+	Time    int
+	Rest    int
+	Slot    int
+	Note    string
+	Xray    bool
+	Status  string // ready, running, paused, done
+	Mark    time.Time
+	Elapsed time.Duration
+	Rev     int
 }
 
 func defaultSession() Session {
 	return Session{
-		Dial:  formatIndex("emom"),
-		Count: stopIndex(countStops, 16),
-		Time:  stopIndex(timeStops, 60),
-		Rest:  stopIndex(restStops, 60),
-		Slot:  1,
-		Note:  "odd: 12 toes-to-bar / even: 15 wall balls",
+		Dial:   formatIndex("emom"),
+		Count:  stopIndex(countStops, 16),
+		Time:   stopIndex(timeStops, 60),
+		Rest:   stopIndex(restStops, 60),
+		Slot:   1,
+		Note:   "odd: 12 toes-to-bar / even: 15 wall balls",
+		Xray:   true,
+		Status: "ready",
 	}
 }
 
@@ -168,16 +176,126 @@ func (s *Session) Apply(op, value, text string) {
 			s.Time += d
 		case "rest":
 			s.Rest += d
+		default:
+			return
 		}
+		s.resetRun()
 	case "format":
 		t := formatIndex(value)
 		if t < 0 {
 			return
 		}
 		s.Dial = t
+		s.resetRun()
 	case "note":
 		s.Note = text
+	case "start":
+		s.start(time.Now())
+	case "stop":
+		s.stop(time.Now())
+	case "reset":
+		s.resetRun()
+	case "xray":
+		s.Xray = !s.Xray
 	}
+}
+
+func (s Session) status() string {
+	if s.Status == "" {
+		return "ready"
+	}
+	return s.Status
+}
+
+func (s *Session) resetRun() {
+	s.Status = "ready"
+	s.Elapsed = 0
+	s.Mark = time.Time{}
+}
+
+func (s *Session) start(now time.Time) {
+	if s.mode() == "clock" {
+		return
+	}
+	s.CatchUp(now)
+	switch s.Status {
+	case "running":
+		return
+	case "paused":
+		s.Mark = now.Add(-s.Elapsed)
+	default:
+		s.Elapsed = 0
+		s.Mark = now
+	}
+	s.Status = "running"
+}
+
+func (s *Session) stop(now time.Time) {
+	if s.mode() == "clock" {
+		return
+	}
+	if s.CatchUp(now) || s.Status != "running" {
+		return
+	}
+	elapsed := now.Sub(s.Mark)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	s.Elapsed = elapsed
+	s.Status = "paused"
+}
+
+// CatchUp freezes a running program once its cues are over.
+func (s *Session) CatchUp(now time.Time) bool {
+	if s.Status != "running" {
+		return false
+	}
+	elapsed := now.Sub(s.Mark)
+	total := s.totalDur()
+	if total <= 0 || elapsed < total {
+		return false
+	}
+	s.Status = "done"
+	s.Elapsed = total
+	return true
+}
+
+func (s Session) totalDur() time.Duration {
+	var n time.Duration
+	for _, c := range s.Cues() {
+		n += time.Duration(c.Seconds) * time.Second
+	}
+	return n
+}
+
+func (s Session) elapsedAt(now time.Time) time.Duration {
+	switch s.status() {
+	case "running":
+		d := now.Sub(s.Mark)
+		if d < 0 {
+			return 0
+		}
+		return d
+	case "paused", "done":
+		if s.Elapsed < 0 {
+			return 0
+		}
+		return s.Elapsed
+	default:
+		return 0
+	}
+}
+
+// tickEvery is how often the face asks for a new read. Empty means the
+// painted digits stay put.
+func (s Session) tickEvery() string {
+	if s.mode() == "clock" {
+		return "1s"
+	}
+	if s.status() == "running" {
+		return "200ms"
+	}
+	return ""
 }
 
 func (s *Session) Normalize() {
@@ -351,24 +469,94 @@ func (s Session) Cues() []Cue {
 	}
 }
 
-func readyDigits(s Session) string {
-	switch s.mode() {
-	case "interval":
-		return formatLED(s.workSec())
-	case "down":
-		return formatLED(s.lengthSec())
-	case "up":
-		return "00:00"
-	default:
-		return "--:--"
+const blankRounds = "  "
+
+// Display is the two readouts on the Echo face: red MM:SS and the green
+// round pair. Times are the server's clock.
+func (s Session) Display(now time.Time) (digits, rounds string) {
+	cues := s.Cues()
+	if len(cues) == 0 {
+		return "--:--", blankRounds
 	}
+	if s.mode() == "clock" {
+		return wall(now), blankRounds
+	}
+	if s.status() == "ready" {
+		c := cues[0]
+		digits = "00:00"
+		if c.Count == "down" {
+			digits = formatLED(c.Seconds)
+		}
+		if c.Round > 0 && s.rounds() > 0 {
+			return digits, fmt.Sprintf("%02d", s.rounds())
+		}
+		return digits, blankRounds
+	}
+	idx, into, pastEnd := place(cues, s.elapsedAt(now))
+	c := cues[idx]
+	if pastEnd || s.status() == "done" {
+		if c.Count == "down" {
+			return "00:00", roundLabel(c)
+		}
+		return formatLED(c.Seconds), roundLabel(c)
+	}
+	return formatLED(shownSeconds(c, into)), roundLabel(c)
 }
 
-func readyRounds(s Session) string {
-	if s.mode() != "interval" {
-		return ""
+func roundLabel(c Cue) string {
+	if c.Round <= 0 {
+		return blankRounds
 	}
-	return strconv.Itoa(s.rounds())
+	return fmt.Sprintf("%02d", c.Round)
+}
+
+func place(cues []Cue, elapsed time.Duration) (idx int, into time.Duration, pastEnd bool) {
+	remain := elapsed
+	for i, c := range cues {
+		d := time.Duration(c.Seconds) * time.Second
+		last := i == len(cues)-1
+		if !last && (d <= 0 || remain >= d) {
+			if d > 0 {
+				remain -= d
+			}
+			continue
+		}
+		if remain < 0 {
+			remain = 0
+		}
+		if last && d > 0 && remain >= d {
+			return i, d, true
+		}
+		return i, remain, false
+	}
+	return 0, 0, true
+}
+
+func shownSeconds(c Cue, into time.Duration) int {
+	ms := into.Milliseconds()
+	if c.Count == "down" {
+		left := int64(c.Seconds)*1000 - ms
+		if left <= 0 {
+			return 0
+		}
+		return int((left + 999) / 1000)
+	}
+	capms := int64(c.Seconds) * 1000
+	if capms > 0 && ms > capms {
+		ms = capms
+	}
+	if ms < 0 {
+		return 0
+	}
+	return int(ms / 1000)
+}
+
+func wall(t time.Time) string {
+	h := t.Hour() % 12
+	if h == 0 {
+		h = 12
+	}
+	return fmt.Sprintf("%2d:%02d", h, t.Minute())
 }
 
 func formatLED(sec int) string {

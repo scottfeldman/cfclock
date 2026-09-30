@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	g "maragu.dev/gomponents"
 )
 
-//go:embed static/clock.js static/clock.css
+//go:embed static/clock.css
 var assets embed.FS
 
 // Store is the program the controller will load onto the one Echo timer.
@@ -41,10 +43,7 @@ func main() {
 	store := &Store{sess: sess}
 
 	app := fiber.New()
-	app.Get("/", pageHandler(store))
-	app.Post("/program", programHandler(store))
-	app.Get("/static/clock.js", asset("text/javascript; charset=utf-8", "static/clock.js"))
-	app.Get("/static/clock.css", asset("text/css; charset=utf-8", "static/clock.css"))
+	routes(app, store)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -53,6 +52,13 @@ func main() {
 	addr := ":" + port
 	log.Printf("Echo controller at http://localhost%s", addr)
 	log.Fatal(app.Listen(addr))
+}
+
+func routes(app *fiber.App, store *Store) {
+	app.Get("/", pageHandler(store))
+	app.Post("/program", programHandler(store))
+	app.Get("/face", faceHandler(store))
+	app.Get("/static/clock.css", asset("text/css; charset=utf-8", "static/clock.css"))
 }
 
 func pageHandler(store *Store) fiber.Handler {
@@ -65,11 +71,38 @@ func programHandler(store *Store) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		sess := store.Update(func(s *Session) {
 			s.Apply(c.FormValue("op"), c.FormValue("value"), c.FormValue("text"))
+			s.Rev++
 		})
 		if c.Get("HX-Request") == "true" {
 			return writeNode(c, Board(sess))
 		}
 		return writeNode(c, Page(sess))
+	}
+}
+
+func faceHandler(store *Store) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		now := time.Now()
+		clientRev, _ := strconv.Atoi(c.Query("rev"))
+		var ok, becameDone bool
+		sess := store.Update(func(s *Session) {
+			if clientRev != s.Rev {
+				return
+			}
+			ok = true
+			if s.CatchUp(now) {
+				becameDone = true
+				s.Rev++
+			}
+		})
+		if !ok {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+		if !becameDone {
+			return writeNode(c, Face(sess, now))
+		}
+		sel := fmt.Sprintf("#transport[data-rev='%d']", clientRev)
+		return writeNode(c, g.Group{Face(sess, now), Transport(sess, sel)})
 	}
 }
 

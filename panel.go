@@ -328,7 +328,7 @@ func formatKnob(s Session) Node {
 		tx2, ty2 := polar(fmtX, fmtY, fmtKnobR+11, a)
 		marks = append(marks,
 			El("line", Class("tick"), num("x1", tx1), num("y1", ty1), num("x2", tx2), num("y2", ty2)),
-			El("text", Class(cls), Attr("data-format", fm.ID), Style("text-anchor: "+anchor), num("x", x), num("y", y), Text(fm.Label)),
+			El("text", Class(cls), hxProgram("format", fm.ID), Style("text-anchor: "+anchor), num("x", x), num("y", y), Text(fm.Label)),
 		)
 	}
 	ridges := make([]Node, 12)
@@ -343,7 +343,7 @@ func formatKnob(s Session) Node {
 	return Group{
 		Group(marks),
 		El("text", Class("plate-label"), num("x", 90), num("y", fmtY), Text("FORMAT")),
-		knobShell("format", "Format knob", formats[cur].Label, formatDetent, fmtX, fmtY, fmtKnobR+4,
+		knobShell("format", "Format knob", formats[cur].Label, fmtX, fmtY, fmtKnobR+4,
 			El("g", ID("rotor-format"), Class("rotor"), Style(rotate(fmtX, fmtY, float64(s.Dial)*formatDetent)),
 				El("circle", Class("cap"), cxy(fmtX, fmtY), num("r", fmtKnobR)),
 				Group(ridges),
@@ -394,7 +394,7 @@ func valueKnobNodes(s Session) []Node {
 			pointer += " idle"
 		}
 		out = append(out,
-			knobShell(name, strings.ToUpper(name[:1])+name[1:]+" knob", text, d, x, knobY, knobR+4,
+			knobShell(name, strings.ToUpper(name[:1])+name[1:]+" knob", text, x, knobY, knobR+4,
 				El("g", ID("rotor-"+name), Class("rotor"), Style(rotate(x, knobY, float64(pos)*d)),
 					El("circle", Class("cap"), cxy(x, knobY), num("r", knobR)),
 					Group(knurl),
@@ -407,16 +407,11 @@ func valueKnobNodes(s Session) []Node {
 	return out
 }
 
-func knobShell(name, label, value string, detent, x, y, r float64, rotor Node) Node {
+func knobShell(name, label, value string, x, y, r float64, rotor Node) Node {
 	return El("g",
 		ID("knob-"+name),
 		Class("knob"),
-		Attr("data-knob", name),
-		num("data-detent", detent),
-		Attr("tabindex", "0"),
-		Attr("role", "slider"),
-		Attr("aria-label", label),
-		Attr("aria-valuetext", value),
+		Attr("aria-label", label+", "+value),
 		El("circle", Class("knob-hit"), cxy(x, y), num("r", r)),
 		rotor,
 	)
@@ -424,12 +419,18 @@ func knobShell(name, label, value string, detent, x, y, r float64, rotor Node) N
 
 func turnButtons(name string, x, y, dx float64) Node {
 	btn := func(dir, glyph, label string, bx float64) Node {
+		idDir := "plus"
+		if dir == "-" {
+			idDir = "minus"
+		}
 		return El("g",
+			ID("turn-"+name+"-"+idDir),
+			Attr("hx-preserve", "true"),
 			Class("turn"),
-			Attr("data-turn", name+":"+dir),
 			Attr("role", "button"),
 			Attr("tabindex", "0"),
 			Attr("aria-label", label),
+			hxProgram("turn", name+":"+dir),
 			El("circle", cxy(bx, y), Attr("r", "13")),
 			El("text", num("x", bx), num("y", y), Text(glyph)),
 		)

@@ -33,10 +33,13 @@ GEAR_T = 4.0
 Z_PLATE_BOT = -T_PLATE
 Z_UNITS_F = Z_PLATE_BOT - GAP
 Z_VALUE_F = Z_UNITS_F - DISK_T - GAP
-Z_UNITS_B = Z_VALUE_F - GAP
+# The middle pair is a full disk thickness behind the outer value disks.
+# The old stack only gapped the bottoms, so the middle units disk ran
+# through the count and rest value disks.
+Z_UNITS_B = Z_VALUE_F - DISK_T - GAP
 Z_VALUE_B = Z_UNITS_B - DISK_T - GAP
-Z_HUB = Z_VALUE_B - 2.0 - GEAR_T
-Z_SHAFT_BOT = Z_HUB - 1.0
+Z_HUB = -15.2
+Z_SHAFT_BOT = -15.2
 KNOB_H = 12.0
 Z_KNOB = 1.2
 Z_HANDLE = Z_KNOB + KNOB_H + 1.0
@@ -138,7 +141,11 @@ def articulate(fmt=None, count=None, time=None, rest=None):
         c = float(ss.CountDeg)
         t = float(ss.TimeDeg)
         r = float(ss.RestDeg)
+        # Same ratio as the 28/14 tooth pair. Row idlers are half a tooth
+        # out of phase with the feed idler: they mesh along X, the feed
+        # idler meshes along Y. See cad/rebuild_gears.py.
         idler_a = -f * (hubR / idlerR)
+        row_a = idler_a - 180.0 / 14.0
 
         spin(doc.getObject("Shaft_format"), fmtX, fmtY, Z_SHAFT_BOT, f)
         spin(doc.getObject("FormatDriveGear"), fmtX, fmtY, Z_HUB, f)
@@ -175,7 +182,7 @@ def articulate(fmt=None, count=None, time=None, rest=None):
                 p.Placement = App.Placement(base + out, App.Rotation(App.Vector(0, 0, 1), vd))
             place_handle(doc, name, x, knobY, knobR * 0.9, vd)
             if k > 0:
-                spin(doc.getObject("Idler_" + str(k)), colX(k) - colPitch / 2, knobY, Z_HUB, idler_a)
+                spin(doc.getObject("Idler_" + str(k)), colX(k) - colPitch / 2, knobY, Z_HUB, row_a)
 
         doc.recompute()
         return {"Format": f, "Count": c, "Time": t, "Rest": r}

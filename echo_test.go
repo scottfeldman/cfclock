@@ -1,6 +1,16 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+)
 
 func TestEMOM16RemoteSequence(t *testing.T) {
 	s := defaultSession()
@@ -181,6 +191,205 @@ func splitM(d string) []string {
 		}
 	}
 	return out
+}
+
+func TestRunDisplay(t *testing.T) {
+	s := defaultSession()
+	s.Normalize()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	digits, rounds := s.Display(now)
+	if digits != "01:00" || rounds != "16" {
+		t.Fatalf("ready %s %s", digits, rounds)
+	}
+	s.start(now)
+	digits, rounds = s.Display(now.Add(1500 * time.Millisecond))
+	if digits != "00:59" || rounds != "01" {
+		t.Fatalf("run %s %s", digits, rounds)
+	}
+	s.stop(now.Add(1500 * time.Millisecond))
+	if s.Status != "paused" {
+		t.Fatal(s.Status)
+	}
+	held, heldRounds := s.Display(now.Add(10 * time.Second))
+	if held != digits || heldRounds != rounds {
+		t.Fatalf("paused %s %s", held, heldRounds)
+	}
+	s.start(now.Add(8 * time.Second))
+	digits, _ = s.Display(now.Add(8 * time.Second))
+	if digits != "00:59" || s.Status != "running" {
+		t.Fatalf("resume %s %s", digits, s.Status)
+	}
+	later, _ := s.Display(now.Add(8*time.Second + 2*time.Second))
+	if later != "00:57" {
+		t.Fatalf("after resume %s", later)
+	}
+	s.resetRun()
+	digits, rounds = s.Display(now)
+	if digits != "01:00" || rounds != "16" || s.Status != "ready" {
+		t.Fatalf("reset %s %s %s", digits, rounds, s.Status)
+	}
+}
+
+func TestRunFinishes(t *testing.T) {
+	s := defaultSession()
+	s.Normalize()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s.start(now)
+	end := now.Add(16 * time.Minute)
+	if !s.CatchUp(end) || s.Status != "done" {
+		t.Fatal(s.Status)
+	}
+	digits, rounds := s.Display(end)
+	if digits != "00:00" || rounds != "16" {
+		t.Fatalf("done %s %s", digits, rounds)
+	}
+	if s.tickEvery() != "" {
+		t.Fatal(s.tickEvery())
+	}
+}
+
+func TestForTimeShowsCapWhenDone(t *testing.T) {
+	s := defaultSession()
+	s.Apply("format", "fortime", "")
+	s.Normalize()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	digits, rounds := s.Display(now)
+	if digits != "00:00" || rounds != "  " {
+		t.Fatalf("ready %q %q", digits, rounds)
+	}
+	s.start(now)
+	end := now.Add(16 * time.Minute)
+	if !s.CatchUp(end) {
+		t.Fatal("not done")
+	}
+	digits, _ = s.Display(end)
+	if digits != "16:00" {
+		t.Fatalf("done %s", digits)
+	}
+}
+
+func TestClockFaceIsWallTime(t *testing.T) {
+	s := defaultSession()
+	s.Apply("format", "clock", "")
+	s.Normalize()
+	now := time.Date(2026, 9, 30, 15, 4, 0, 0, time.Local)
+	digits, rounds := s.Display(now)
+	if digits != " 3:04" || rounds != "  " {
+		t.Fatalf("%q %q", digits, rounds)
+	}
+	s.Apply("start", "", "")
+	if s.Status == "running" {
+		t.Fatal("clock started")
+	}
+	if s.tickEvery() != "1s" {
+		t.Fatal(s.tickEvery())
+	}
+	noon := time.Date(2026, 9, 30, 0, 0, 0, 0, time.Local)
+	digits, _ = s.Display(noon)
+	if digits != "12:00" {
+		t.Fatalf("midnight %q", digits)
+	}
+}
+
+func TestTurnResetsRun(t *testing.T) {
+	s := defaultSession()
+	s.Normalize()
+	s.start(time.Now())
+	s.Apply("turn", "count:+", "")
+	if s.Status != "ready" {
+		t.Fatal(s.Status)
+	}
+}
+
+func TestXrayToggles(t *testing.T) {
+	s := defaultSession()
+	if !s.Xray {
+		t.Fatal("default")
+	}
+	s.Apply("xray", "", "")
+	if s.Xray {
+		t.Fatal("still on")
+	}
+}
+
+func TestBoardIsHTMX(t *testing.T) {
+	s := defaultSession()
+	s.Normalize()
+	var buf bytes.Buffer
+	if err := Page(s).Render(&buf); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	if strings.Contains(html, "clock.js") {
+		t.Fatal("clock.js still referenced")
+	}
+	if !strings.Contains(html, "htmx.org") || !strings.Contains(html, `hx-post="/program"`) {
+		t.Fatal("missing htmx")
+	}
+	if !strings.Contains(html, `class="xray"`) || !strings.Contains(html, `aria-label="01:00"`) {
+		t.Fatal("face")
+	}
+	if !strings.Contains(html, `points="13,4 47,4 53,10 47,16 13,16 7,10"`) {
+		t.Fatal("segments")
+	}
+	s.start(time.Now())
+	s.Rev = 4
+	buf.Reset()
+	if err := Face(s, time.Now()).Render(&buf); err != nil {
+		t.Fatal(err)
+	}
+	html = buf.String()
+	if !strings.Contains(html, `hx-get="/face?rev=4"`) || !strings.Contains(html, "every 200ms") {
+		t.Fatalf("%s", html)
+	}
+}
+
+func TestStaleFacePollIsIgnored(t *testing.T) {
+	sess := defaultSession()
+	sess.Normalize()
+	store := &Store{sess: sess}
+	app := fiber.New()
+	routes(app, store)
+
+	req := httptest.NewRequest(http.MethodPost, "/program", strings.NewReader("op=start&value="))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != 200 || !strings.Contains(string(body), "every 200ms") {
+		t.Fatalf("start %d %s", resp.StatusCode, body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/face?rev=0", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("stale %d", resp.StatusCode)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/face?rev=1", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != 200 || !strings.Contains(string(body), `aria-label="01:00"`) {
+		t.Fatalf("live %d %s", resp.StatusCode, body)
+	}
 }
 
 func names(keys []Key) []string {
