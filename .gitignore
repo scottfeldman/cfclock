@@ -1,0 +1,7 @@
+/cfclock
+*.exe
+*.test
+.DS_Store
+.env
+*.log
+/tmp/

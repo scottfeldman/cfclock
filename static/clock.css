@@ -1,0 +1,286 @@
+:root {
+  color-scheme: dark;
+  --bg: #141414;
+  --ink: #f2f2f2;
+  --dim: #8d8d8d;
+  --line: #333;
+  --red: #ff2a1a;
+  --green: #3dff55;
+  --key: #242424;
+  --key-on: #ff2a1a;
+  --plate: #262626;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+button, input { font: inherit; letter-spacing: inherit; }
+
+.echo {
+  background: #0a0a0a;
+  padding: 1.4rem 1rem 0.8rem;
+}
+
+.bezel {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  background: #050505;
+  border: 1px solid #2c2c2c;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 6px #111, inset 0 0 48px #000;
+  padding: 0.85rem 1.4rem 0.7rem;
+}
+
+.bezel-mark {
+  margin-top: 0.6rem;
+  text-align: center;
+  font-size: 1.5rem;
+  letter-spacing: 0.42em;
+  color: #5a5a5a;
+}
+
+.screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(1rem, 4vw, 2.6rem);
+  padding: 0.6rem 0 0.2rem;
+}
+
+.seg svg {
+  display: block;
+  height: clamp(4.2rem, 14vw, 9rem);
+  transform: skewX(-6deg);
+}
+
+.seg .off { fill: #1a0a08; }
+.seg.green .off { fill: #07170a; }
+.seg.red .on { fill: var(--red); }
+.seg.green .on { fill: var(--green); }
+
+.deck { background: #161616; border-top: 1px solid #2a2a2a; }
+
+.deck-inner {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 1rem 1rem 1.6rem;
+}
+
+.transport {
+  display: flex;
+  gap: 0.55rem;
+  margin-top: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.go, .stop, .reset {
+  background: var(--key);
+  color: var(--ink);
+  border: 1px solid #3a3a3a;
+  cursor: pointer;
+  min-height: 64px;
+}
+
+.go {
+  flex: 1.4;
+  background: #d6f25c;
+  color: #172004;
+  border-color: #d6f25c;
+  font-size: 1.7rem;
+  letter-spacing: 0.16em;
+}
+
+.go.running,
+.go:disabled {
+  background: #6d7a3a;
+  color: #172004;
+  border-color: #6d7a3a;
+  cursor: default;
+}
+
+.stop, .reset {
+  flex: 1;
+  font-size: 1.5rem;
+  letter-spacing: 0.14em;
+}
+
+.legend {
+  margin: 0.45rem 0 0.8rem;
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.xray-toggle {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid #3a3a3a;
+  padding: 0.35rem 0.8rem;
+  font-size: 1.5rem;
+  cursor: pointer;
+  letter-spacing: 0.18em;
+}
+
+.xray-toggle[aria-pressed="true"] { color: #e8c98a; border-color: #8a6d3b; }
+
+.panel-wrap { margin: 0 auto 0.3rem; max-width: 760px; }
+
+.panel {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.panel text {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.cavity { fill: #070707; }
+
+.plate {
+  fill: var(--plate);
+  transition: opacity 0.3s ease;
+}
+
+.xray .plate { opacity: 0.18; }
+
+.gear, .rotor, .disk {
+  transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.shutter { fill: var(--plate); stroke: var(--plate); stroke-width: 1; }
+.xray .shutter { stroke: #5a5a5a; fill-opacity: 0.92; }
+
+.teeth { fill: #b08d57; stroke: #6f5530; stroke-width: 1; }
+.gear.idler .teeth { fill: #8f7143; }
+.hub { fill: #2a2a2a; stroke: #6f5530; }
+
+.chip { fill: #fff; }
+.unit { font-size: 22px; letter-spacing: 0.02em; fill: var(--plate); }
+
+.disk-face { fill: var(--plate); stroke: var(--plate); }
+.xray .disk-face { stroke: #5a5a5a; }
+.digit { font-size: 22px; letter-spacing: 0; fill: var(--plate); }
+.stop-pin { stroke: #6f5530; stroke-width: 5; stroke-linecap: round; }
+
+.frame { fill: none; stroke: #000; stroke-width: 2.5; rx: 3; }
+.frame.blank { stroke: var(--plate); }
+.plate-label { font-size: 22px; letter-spacing: 0.22em; fill: #7a7a7a; }
+.tick { stroke: #7a7a7a; stroke-width: 2.5; stroke-linecap: round; }
+
+.knob { cursor: grab; outline: none; touch-action: none; }
+.knob:active { cursor: grabbing; }
+.knob-hit { fill: transparent; }
+.knob:focus-visible .knob-hit { stroke: #f0e2a0; stroke-width: 2; }
+
+.cap { fill: url(#cap); stroke: #444; }
+.ridge { stroke: #0c0c0c; stroke-width: 2; stroke-linecap: round; }
+.pointer { stroke: var(--red); stroke-width: 4; stroke-linecap: round; }
+.pointer.idle { stroke: #555; }
+
+.flabel { font-size: 22px; letter-spacing: 0.04em; fill: #9a9a9a; cursor: pointer; }
+.flabel.on { fill: var(--red); }
+
+.xray .cap { fill-opacity: 0.45; }
+
+.turn { cursor: pointer; outline: none; }
+.turn circle { fill: #1d1d1d; stroke: #3a3a3a; }
+.turn text { font-size: 15px; fill: #cfcfcf; }
+.turn:hover circle { stroke: #777; }
+.turn:focus-visible circle { stroke: #f0e2a0; stroke-width: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gear, .rotor, .disk { transition: none; }
+}
+
+.hint, .hardware {
+  margin: 0.15rem 0 0.7rem;
+  color: var(--dim);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.hardware { margin-top: 0.45rem; font-size: 1.5rem; }
+
+.knob-label {
+  color: var(--dim);
+  font-size: 1.5rem;
+  letter-spacing: 0.18em;
+  margin-bottom: 0.28rem;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.4rem;
+}
+
+.note input {
+  background: #f4f1e6;
+  color: #1c1914;
+  border: 0;
+  padding: 0.55rem 0.7rem;
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.tape-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 0.9rem;
+}
+
+.tape-count { color: var(--dim); font-size: 1.5rem; letter-spacing: 0.14em; }
+
+.tape {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  background: #0c0c0c;
+  border: 1px solid #2a2a2a;
+  color: #d7d7d7;
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 1.5rem;
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+  font-weight: 400;
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.go:focus-visible, .stop:focus-visible, .reset:focus-visible,
+.xray-toggle:focus-visible, .note input:focus-visible {
+  outline: 2px solid #f0e2a0;
+  outline-offset: 2px;
+}
+
+[hidden] { display: none !important; }
+
+@media (max-width: 700px) {
+  .transport { flex-wrap: wrap; }
+  .go { flex-basis: 100%; }
+}
