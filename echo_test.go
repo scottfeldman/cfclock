@@ -49,30 +49,39 @@ func TestTabataIgnoresValueKnobs(t *testing.T) {
 	}
 }
 
-func TestFormatKnobIsEndless(t *testing.T) {
+func TestFormatKnobStopsAtEnds(t *testing.T) {
 	s := defaultSession()
 	var seen []string
-	for range formats {
+	for range len(formats) {
 		s.Apply("turn", "format:+", "")
+		s.Normalize()
 		seen = append(seen, s.Format())
 	}
-	want := "amrap fortime tabata intervals clock emom"
+	want := "amrap fortime tabata tabata tabata tabata"
 	if stringsJoin(seen) != want {
 		t.Fatalf("%v", seen)
 	}
-	if s.Dial != 6 {
+	if s.Dial != len(formats)-1 {
 		t.Fatalf("dial %d", s.Dial)
+	}
+	s.Dial = 0
+	s.Apply("turn", "format:-", "")
+	s.Normalize()
+	if s.Dial != 0 || s.Format() != "intervals" {
+		t.Fatalf("dial %d %s", s.Dial, s.Format())
 	}
 }
 
-func TestFormatJumpTakesShortWay(t *testing.T) {
+func TestFormatJumpIsAbsolute(t *testing.T) {
 	s := defaultSession()
 	s.Apply("format", "clock", "")
-	if s.Dial != -1 || s.Format() != "clock" {
+	s.Normalize()
+	if s.Dial != formatIndex("clock") || s.Format() != "clock" {
 		t.Fatalf("dial %d %s", s.Dial, s.Format())
 	}
 	s.Apply("format", "fortime", "")
-	if s.Dial != -4 || s.Format() != "fortime" {
+	s.Normalize()
+	if s.Dial != formatIndex("fortime") || s.Format() != "fortime" {
 		t.Fatalf("dial %d %s", s.Dial, s.Format())
 	}
 }

@@ -65,13 +65,16 @@ type Format struct {
 	Label string
 }
 
+// Format is one detent of the format pot. Order is the live arc of an
+// Alps RK09-class pot (~300°): INTERVALS at the CCW end through TABATA
+// at the CW end, with the ~60° dead zone between TABATA and INTERVALS.
 var formats = []Format{
+	{"intervals", "INTERVALS"},
+	{"clock", "CLOCK"},
 	{"emom", "EMOM"},
 	{"amrap", "AMRAP"},
 	{"fortime", "FOR TIME"},
 	{"tabata", "TABATA"},
-	{"intervals", "INTERVALS"},
-	{"clock", "CLOCK"},
 }
 
 func formatIndex(id string) int {
@@ -104,9 +107,10 @@ var (
 	restStops = []int{0, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300}
 )
 
-// Session is the position of the four knobs. Dial counts format detents
-// and never wraps, the way an endless encoder does; the format is Dial
-// mod 6. Count, Time, and Rest are value disk positions.
+// Session is the position of the four Alps RK09-class pots. Dial, Count,
+// Time, and Rest are absolute stop indices with end stops. Format Dial
+// runs INTERVALS…TABATA on the live arc; the pot dead zone sits between
+// TABATA and INTERVALS.
 type Session struct {
 	Dial  int
 	Count int
@@ -118,6 +122,7 @@ type Session struct {
 
 func defaultSession() Session {
 	return Session{
+		Dial:  formatIndex("emom"),
 		Count: stopIndex(countStops, 16),
 		Time:  stopIndex(timeStops, 60),
 		Rest:  stopIndex(restStops, 60),
@@ -139,7 +144,7 @@ func mod(a, n int) int {
 	return ((a % n) + n) % n
 }
 
-func (s Session) Format() string { return formats[mod(s.Dial, len(formats))].ID }
+func (s Session) Format() string { return formats[s.Dial].ID }
 
 func (s Session) Units(knob int) string { return unitTable[s.Format()][knob] }
 
@@ -169,14 +174,14 @@ func (s *Session) Apply(op, value, text string) {
 		if t < 0 {
 			return
 		}
-		cur := mod(s.Dial, len(formats))
-		s.Dial += mod(t-cur+3, len(formats)) - 3
+		s.Dial = t
 	case "note":
 		s.Note = text
 	}
 }
 
 func (s *Session) Normalize() {
+	s.Dial = clamp(s.Dial, 0, len(formats)-1)
 	s.Count = clamp(s.Count, 0, len(countStops)-1)
 	s.Time = clamp(s.Time, 0, len(timeStops)-1)
 	s.Rest = clamp(s.Rest, 0, len(restStops)-1)

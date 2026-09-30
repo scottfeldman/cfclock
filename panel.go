@@ -22,33 +22,35 @@ import (
 // touching. The windows are below the knobs, where no neighbor reaches.
 //
 // A hub gear on each units sleeve turns it. The hubs, the drive gear on
-// the format shaft, and the idlers between them are all the same pitch,
-// and each hub is the same size as the drive gear, so every units disk
-// turns 60° per format detent, the same way as the format knob.
+// the format pot shaft, and the idlers between them are all the same
+// pitch, and each hub is the same size as the drive gear, so every units
+// disk turns one formatDetent per format stop — matching the RK09 live
+// arc (six stops in ~300°, dead zone between TABATA and INTERVALS).
 const (
-	panelW     = 680.0
-	panelH     = 468.0
-	colX0      = 172.0
-	colPitch   = 168.0
-	knobY      = 276.0
-	knobR      = 36.0
-	diskR      = 152.0
-	valueR     = 132.0
-	unitR      = 98.0
-	valueWinH  = 34.0
-	unitWinW   = 80.0
-	unitWinH   = 26.0
-	shutterIn  = 114.0
-	shutterOut = 150.0
-	labelY     = knobY + 172
-	fmtX       = 340.0
-	fmtY       = 108.0
-	fmtKnobR   = 56.0
-	fmtLabelR  = 82.0
-	hubR       = 56.0
-	hubTeeth   = 28
-	idlerR     = 28.0
-	idlerTeeth = 14
+	panelW       = 680.0
+	panelH       = 468.0
+	colX0        = 172.0
+	colPitch     = 168.0
+	knobY        = 276.0
+	knobR        = 36.0
+	diskR        = 152.0
+	valueR       = 132.0
+	unitR        = 98.0
+	valueWinH    = 34.0
+	unitWinW     = 80.0
+	unitWinH     = 26.0
+	shutterIn    = 114.0
+	shutterOut   = 150.0
+	labelY       = knobY + 172
+	fmtX         = 340.0
+	fmtY         = 108.0
+	fmtKnobR     = 56.0
+	fmtLabelR    = 82.0
+	formatDetent = 60.0 // degrees between format stops on the RK09 live arc
+	hubR         = 56.0
+	hubTeeth     = 28
+	idlerR       = 28.0
+	idlerTeeth   = 14
 )
 
 func columnX(k int) float64 { return colX0 + colPitch*float64(k) }
@@ -112,7 +114,7 @@ func panelDefs() Node {
 // idler, to the middle hub, and along the row through an idler between
 // each pair of hubs.
 func gearTrain(s Session) Node {
-	a := float64(s.Dial) * 60
+	a := float64(s.Dial) * formatDetent
 	gear := func(id, kind string, cx, cy, r float64, n int, angle float64) Node {
 		return El("g",
 			ID("gear-"+id),
@@ -173,11 +175,11 @@ func valueDisk(s Session, k int) Node {
 }
 
 // unitsDisk rides on the knob's sleeve and turns with the format train.
-// Format f's units are printed at -60f so they reach the units window when
-// the dial is on f.
+// Format f's units are printed at -formatDetent·f so they reach the units
+// window when the dial is on f.
 func unitsDisk(s Session, k int) Node {
 	x := columnX(k)
-	cur := mod(s.Dial, len(formats))
+	cur := s.Dial
 	labels := []Node{}
 	for f, fm := range formats {
 		label := unitTable[fm.ID][k]
@@ -188,7 +190,7 @@ func unitsDisk(s Session, k int) Node {
 		if f == cur {
 			cls += " on"
 		}
-		rot := fmt.Sprintf("rotate(%d %g %g)", -60*f, x, knobY)
+		rot := fmt.Sprintf("rotate(%g %g %g)", -float64(f)*formatDetent, x, knobY)
 		labels = append(labels,
 			rect(x-unitWinW/2, knobY+unitR-unitWinH/2, unitWinW, unitWinH, Class("chip"), Attr("transform", rot)),
 			El("text",
@@ -202,15 +204,15 @@ func unitsDisk(s Session, k int) Node {
 	return El("g",
 		ID("udisk-"+valueKnobs[k]),
 		Class("disk units-disk"),
-		Style(rotate(x, knobY, float64(s.Dial)*60)),
+		Style(rotate(x, knobY, float64(s.Dial)*formatDetent)),
 		El("path", Class("shutter"), Attr("fill-rule", "evenodd"), Attr("d", shutterPath(x, knobY, k))),
 		Group(labels),
 	)
 }
 
 // shutterPath is the units disk with an opening for every format that uses
-// knob k. Format f is cut at 180-60f, so it sits over the value window when
-// the dial is on f. Neighboring used formats are cut as one opening.
+// knob k. Format f is cut at 180-formatDetent·f, so it sits over the value
+// window when the dial is on f. Neighboring used formats are cut as one opening.
 func shutterPath(cx, cy float64, k int) string {
 	n := len(formats)
 	used := make([]bool, n)
@@ -252,8 +254,8 @@ func shutterPath(cx, cy float64, k int) string {
 		for used[(last+1)%n] && (last+1)%n != f {
 			last = (last + 1) % n
 		}
-		span := float64(mod(last-f, n)+1) * 60
-		a0 := 180 - 60*float64(f) + 30
+		span := float64(mod(last-f, n)+1) * formatDetent
+		a0 := 180 - formatDetent*float64(f) + formatDetent/2
 		a1 := a0 - span
 		x, y := polar(cx, cy, shutterOut, a1)
 		fmt.Fprintf(&b, "M%.2f %.2f", x, y)
@@ -297,13 +299,16 @@ func frames(s Session) Node {
 	return Group(nodes)
 }
 
-// formatKnob is a pointer knob. The formats are printed on the plate
-// around it at 60f.
+// formatKnob is an RK09-style pot pointer. Formats sit on the ~300° live
+// arc at formatDetent spacing; the remaining ~60° between TABATA and
+// INTERVALS is the pot dead zone (no label, end stops).
 func formatKnob(s Session) Node {
-	cur := mod(s.Dial, len(formats))
-	marks := []Node{}
+	cur := s.Dial
+	marks := []Node{
+		formatDeadZone(),
+	}
 	for f, fm := range formats {
-		a := 60 * float64(f)
+		a := float64(f) * formatDetent
 		cls := "flabel"
 		if f == cur {
 			cls += " on"
@@ -312,9 +317,12 @@ func formatKnob(s Session) Node {
 		anchor := "middle"
 		switch {
 		case a > 0 && a < 180:
-			anchor, x = "start", fmtX+fmtLabelR*0.8
-		case a > 180:
-			anchor, x = "end", fmtX-fmtLabelR*0.8
+			anchor, x = "start", fmtX+fmtLabelR*0.85
+		case a > 180 && a < 360:
+			anchor, x = "end", fmtX-fmtLabelR*0.85
+		}
+		if a == 0 {
+			anchor, y = "middle", fmtY-fmtLabelR
 		}
 		tx1, ty1 := polar(fmtX, fmtY, fmtKnobR+4, a)
 		tx2, ty2 := polar(fmtX, fmtY, fmtKnobR+11, a)
@@ -335,8 +343,8 @@ func formatKnob(s Session) Node {
 	return Group{
 		Group(marks),
 		El("text", Class("plate-label"), num("x", 90), num("y", fmtY), Text("FORMAT")),
-		knobShell("format", "Format knob", formats[cur].Label, 60, fmtX, fmtY, fmtKnobR+4,
-			El("g", ID("rotor-format"), Class("rotor"), Style(rotate(fmtX, fmtY, float64(s.Dial)*60)),
+		knobShell("format", "Format knob", formats[cur].Label, formatDetent, fmtX, fmtY, fmtKnobR+4,
+			El("g", ID("rotor-format"), Class("rotor"), Style(rotate(fmtX, fmtY, float64(s.Dial)*formatDetent)),
 				El("circle", Class("cap"), cxy(fmtX, fmtY), num("r", fmtKnobR)),
 				Group(ridges),
 				El("line", Class("pointer"), num("x1", px1), num("y1", py1), num("x2", px2), num("y2", py2)),
@@ -344,6 +352,19 @@ func formatKnob(s Session) Node {
 		),
 		turnButtons("format", fmtX, fmtY+fmtLabelR, 150),
 	}
+}
+
+// formatDeadZone marks the RK09 unused arc between the last and first format.
+func formatDeadZone() Node {
+	const r0, r1 = fmtKnobR + 14, fmtLabelR - 6
+	a0, a1 := float64(len(formats)-1)*formatDetent, 360.0
+	x0, y0 := polar(fmtX, fmtY, r1, a0)
+	x1, y1 := polar(fmtX, fmtY, r1, a1)
+	x2, y2 := polar(fmtX, fmtY, r0, a1)
+	x3, y3 := polar(fmtX, fmtY, r0, a0)
+	d := fmt.Sprintf("M%.2f %.2f A%g %g 0 0 1 %.2f %.2f L%.2f %.2f A%g %g 0 0 0 %.2f %.2f Z",
+		x0, y0, r1, r1, x1, y1, x2, y2, r0, r0, x3, y3)
+	return El("path", Class("dead-zone"), Attr("d", d))
 }
 
 func valueKnobNodes(s Session) []Node {
