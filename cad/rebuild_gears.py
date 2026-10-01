@@ -19,6 +19,10 @@ import FreeCAD as App
 import Part
 from InvoluteGearFeature import fcgear
 
+# Same factor as articulate.py. Geometry below is the 340 mm design;
+# it is scaled as it is written so the document stays at print size.
+PRINT_SCALE = (9 * 25.4 - 8.0) / 340.0
+
 MODULE = 2.0
 PRESSURE = 20.0
 SHIFT = -0.08  # negative profile shift: backlash at the fixed 42 mm centers
@@ -61,10 +65,17 @@ def with_bore(solid, bore_r):
 
 
 def place(obj, x, y, z, deg):
+    s = PRINT_SCALE
     obj.Placement = App.Placement(
-        App.Vector(x, y, z),
+        App.Vector(x * s, y * s, z * s),
         App.Rotation(App.Vector(0, 0, 1), deg),
     )
+
+
+def store(obj, shape):
+    sh = shape.copy()
+    sh.scale(PRINT_SCALE)
+    obj.Shape = sh
 
 
 def style(obj, color):
@@ -105,7 +116,7 @@ def rebuild():
     ]
     for name, shape, x, y, deg in specs:
         obj = doc.getObject(name)
-        obj.Shape = shape.copy()
+        store(obj, shape)
         place(obj, x, y, GEAR_Z, deg)
         style(obj, BRASS)
 
@@ -137,7 +148,7 @@ def rebuild():
     plate = plate.removeSplitter()
 
     back = doc.addObject("Part::Feature", "BackPlate")
-    back.Shape = plate
+    store(back, plate)
     back.Label = "Back plate"
     style(back, PLATE_COLOR)
 
@@ -148,7 +159,7 @@ def rebuild():
     ]
     for name, label, cx, cy in axles:
         obj = doc.addObject("Part::Feature", name)
-        obj.Shape = idler_axle(cx, cy)
+        store(obj, idler_axle(cx, cy))
         obj.Label = label
         style(obj, STEEL)
 

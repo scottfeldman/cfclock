@@ -1,7 +1,7 @@
 # FreeCAD articulate + drag handles for cfclock.
 #
 # Setup (once per FreeCAD session, after opening cad/cfclock.FCStd):
-#   exec(open("/Users/sfeldma/work/cfclock/cad/articulate.py").read())
+#   exec(open("/home/sfeldma/Work/cfclock/cad/articulate.py").read())
 #
 # Drag a cyan Handle_* in the 3D view:
 #   1. Select Handle_format / Handle_count / Handle_time / Handle_rest
@@ -15,7 +15,10 @@ import FreeCAD as App
 import Part
 import math
 
-S = 0.5
+# The document is stored at print size. This factor fits the 340 mm
+# design plate on a 9 inch bed with 4 mm of margin on each side.
+PRINT_SCALE = (9 * 25.4 - 8.0) / 340.0
+S = 0.5 * PRINT_SCALE
 panelW, panelH = 680 * S, 468 * S
 ox, oy = panelW / 2, panelH / 2
 colX0, colPitch = 172 * S, 168 * S
@@ -26,10 +29,10 @@ fmtKnobR = 56 * S
 knobR = 36 * S
 names = ["count", "time", "rest"]
 
-T_PLATE = 3.0
-DISK_T = 2.0
-GAP = 0.3
-GEAR_T = 4.0
+T_PLATE = 3.0 * PRINT_SCALE
+DISK_T = 2.0 * PRINT_SCALE
+GAP = 0.3 * PRINT_SCALE
+GEAR_T = 4.0 * PRINT_SCALE
 Z_PLATE_BOT = -T_PLATE
 Z_UNITS_F = Z_PLATE_BOT - GAP
 Z_VALUE_F = Z_UNITS_F - DISK_T - GAP
@@ -38,11 +41,11 @@ Z_VALUE_F = Z_UNITS_F - DISK_T - GAP
 # through the count and rest value disks.
 Z_UNITS_B = Z_VALUE_F - DISK_T - GAP
 Z_VALUE_B = Z_UNITS_B - DISK_T - GAP
-Z_HUB = -15.2
-Z_SHAFT_BOT = -15.2
-KNOB_H = 12.0
-Z_KNOB = 1.2
-Z_HANDLE = Z_KNOB + KNOB_H + 1.0
+Z_HUB = -15.2 * PRINT_SCALE
+Z_SHAFT_BOT = -15.2 * PRINT_SCALE
+KNOB_H = 12.0 * PRINT_SCALE
+Z_KNOB = 1.2 * PRINT_SCALE
+Z_HANDLE = Z_KNOB + KNOB_H + 1.0 * PRINT_SCALE
 
 _busy = False
 _observer = None
@@ -168,10 +171,10 @@ def articulate(fmt=None, count=None, time=None, rest=None):
             spin(doc.getObject("Shaft_" + name), x, knobY, Z_SHAFT_BOT, vd)
             spin(doc.getObject("ValueDisk_" + name), x, knobY, z_v, vd)
             spin(doc.getObject("VL_" + name + "_chips"), x, knobY, z_v, vd)
-            spin(doc.getObject("VL_" + name + "_texts"), x, knobY, z_v + 0.2, vd)
+            spin(doc.getObject("VL_" + name + "_texts"), x, knobY, z_v + 0.2 * PRINT_SCALE, vd)
             spin(doc.getObject("UnitsDisk_" + name), x, knobY, z_u, f)
             spin(doc.getObject("UL_" + name + "_chips"), x, knobY, z_u, f)
-            spin(doc.getObject("UL_" + name + "_texts"), x, knobY, z_u + 0.2, f)
+            spin(doc.getObject("UL_" + name + "_texts"), x, knobY, z_u + 0.2 * PRINT_SCALE, f)
             spin(doc.getObject("Hub_" + name), x, knobY, Z_HUB, f)
             p = doc.getObject("Pointer_" + name)
             if p:

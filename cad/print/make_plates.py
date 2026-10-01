@@ -9,7 +9,11 @@ import Part
 
 SRC = "/home/sfeldma/Work/cfclock/cad/cfclock.FCStd"
 OUT = "/home/sfeldma/Work/cfclock/cad/print"
-BED = 10 * 25.4  # 254 mm
+BED = 10 * 25.4  # 254 mm, for the grouped parts
+NINE = 9 * 25.4  # 228.6 mm
+# The FreeCAD model is already print size (plates 220.6 mm, 4 mm margin
+# on a 9 inch bed). Export 1:1.
+SCALE = 1.0
 MARGIN = 8.0
 GAP = 6.0
 
@@ -24,6 +28,14 @@ def log(msg):
 
 def copied(doc, name):
     return doc.getObject(name).Shape.copy()
+
+
+def scaled(shape):
+    s = shape.copy()
+    # scale() about the shape, not transformGeometry: a scale matrix turns
+    # the rotated disks and shafts into ellipses.
+    s.scale(SCALE)
+    return s
 
 
 def seat_mark(disk_bb, solid):
@@ -45,7 +57,8 @@ def fuse_parts(disk_name, mark_names, doc):
     for name in mark_names:
         for solid in copied(doc, name).Solids:
             marks.append(seat_mark(bb, solid))
-    solids = list(disk.Solids) + marks
+    # The units disks carry sub-millimeter boolean crumbs. Drop them.
+    solids = [s for s in disk.Solids if s.Volume > 2.0] + marks
     acc = solids[0]
     for solid in solids[1:]:
         acc = acc.fuse(solid)
@@ -77,7 +90,7 @@ def on_bed(shape, flip_heavy=False):
     return s
 
 
-def arrange(named):
+def arrange(named, bed=BED):
     """Pack shapes that already sit on z=0 with their min corner at the origin."""
     x = MARGIN
     y = MARGIN
@@ -86,12 +99,12 @@ def arrange(named):
     for name, shape in named:
         bb = shape.BoundBox
         w, h = bb.XLength, bb.YLength
-        if x + w > BED - MARGIN:
+        if x + w > bed - MARGIN:
             x = MARGIN
             y += row_h + GAP
             row_h = 0.0
-        if w + 2 * MARGIN > BED or h + 2 * MARGIN > BED or y + h > BED - MARGIN:
-            raise RuntimeError(f"{name} does not fit on a {BED:.0f} mm plate ({w:.1f} x {h:.1f})")
+        if w + 2 * MARGIN > bed or h + 2 * MARGIN > bed or y + h > bed - MARGIN:
+            raise RuntimeError(f"{name} does not fit on a {bed:.0f} mm plate ({w:.1f} x {h:.1f})")
         shape.translate(App.Vector(x - bb.XMin, y - bb.YMin, -bb.ZMin))
         placed.append((name, shape))
         x += w + GAP
@@ -100,8 +113,8 @@ def arrange(named):
     box = placed[0][1].BoundBox
     for _, shape in placed[1:]:
         box.add(shape.BoundBox)
-    dx = (BED - (box.XMax - box.XMin)) / 2.0 - box.XMin
-    dy = (BED - (box.YMax - box.YMin)) / 2.0 - box.YMin
+    dx = (bed - (box.XMax - box.XMin)) / 2.0 - box.XMin
+    dy = (bed - (box.YMax - box.YMin)) / 2.0 - box.YMin
     for _, shape in placed:
         shape.translate(App.Vector(dx, dy, 0))
     return placed
@@ -126,19 +139,16 @@ def export_plate(filename, named):
     )
 
 
-def export_raw(filename, name, shape):
-    """A part that does not fit the 10 inch bed, unscaled."""
-    path = os.path.join(OUT, filename)
-    s = on_bed(shape)
-    bed = App.newDocument("bed")
-    obj = bed.addObject("Part::Feature", name)
-    obj.Label = name
-    obj.Shape = s
-    bed.recompute()
-    Import.export(bed.Objects, path)
-    App.closeDocument(bed.Name)
+def export_raw(filename, name, shape, bed_mm):
+    """One part, centered on a bed of the given size."""
+    s = on_bed(scaled(shape))
     bb = s.BoundBox
-    log(f"{filename}: {bb.XLength:.1f} x {bb.YLength:.1f} x {bb.ZLength:.1f} mm (larger than 10 in)")
+    if bb.XLength > bed_mm or bb.YLength > bed_mm:
+        raise RuntimeError(
+            f"{name} is {bb.XLength:.1f} x {bb.YLength:.1f} mm, larger than {bed_mm:.1f}"
+        )
+    s.translate(App.Vector((bed_mm - bb.XLength) / 2.0 - bb.XMin, (bed_mm - bb.YLength) / 2.0 - bb.YMin, 0))
+    export_plate(filename, [(name, s)])
 
 
 def main():
@@ -158,7 +168,9 @@ def main():
     }
     flip = {"value-shafts.step", "format-shaft.step"}
     for filename, names in plates.items():
-        arranged = arrange([(n, on_bed(copied(src, n), filename in flip)) for n in names])
+        arranged = arrange(
+            [(n, on_bed(scaled(copied(src, n)), filename in flip)) for n in names]
+        )
         export_plate(filename, arranged)
 
     disks = [
@@ -172,13 +184,15 @@ def main():
     for filename, label, disk_name, marks in disks:
         log(f"fusing {disk_name}")
         solid = fuse_parts(disk_name, marks, src)
-        export_plate(filename, arrange([(label, on_bed(solid))]))
+        export_plate(filename, arrange([(label, on_bed(scaled(solid)))]))
 
-    export_raw("front-plate.step", "FrontPlate", copied(src, "Plate"))
-    export_raw("back-plate.step", "BackPlate", copied(src, "BackPlate"))
+    export_raw("front-plate.step", "FrontPlate", copied(src, "Plate"), NINE)
+    export_raw("back-plate.step", "BackPlate", copied(src, "BackPlate"), NINE)
+    log(f"export scale {SCALE:.1f}; model plates already fit a 9 inch bed")
     App.closeDocument(src.Name)
     with open(os.path.join(OUT, "layout.log"), "w") as fh:
         fh.write("\n".join(log_lines) + "\n")
 
 
+# freecadcmd execs this file with __name__ set to the path, not "__main__".
 main()
